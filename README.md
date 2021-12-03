@@ -3,8 +3,8 @@ Command line tool to Read/Write to PCIe BARx memory space
 
 # Command file structure
 
-The option -f allow to provide a commands file to pci_debug. The commands file will be exectued before give you the hand on the PCI> prompt (if -q option is not).
-first line => The BAR concern by the command file. Must be compliant with the -b option
+The option -f allow to provide a commands file to pci_debug. The commands file will be executed before give you the hand on the PCI> prompt (if -q option is not).
+first line => Must be the BAR concerned by the command file. Must be compliant with the -b option
 Other lines => Commands
 
 Example in a file put:
@@ -14,7 +14,7 @@ Example in a file put:
     c32 14 196E
     c32 8 AAB565
 ```
-The option -q allow to quit pci_debug after commands file execution. This command allow you to chain several commands file in a bash script for example.
+The -q option allows to quit pci_debug after the execution of the command file. This option allows you to chain several command files in a bash script for example.
 
 Example:
 
