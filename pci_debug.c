@@ -1,6 +1,14 @@
 /* pci_debug.c
  *
- * 6/21/2010 D. W. Hawkins
+ * Update version:6/21/2021 Léo Dumez leo.dumez@outlook.com
+ * Add commands file support.
+ * Add verbosity level:
+ * 	- 0: only error and warning
+ *  - 1: 0 + the current BAR
+ *  - 2: 1 + the sent command
+ *  - 3: Everything
+ *
+ * First version :6/21/2010 D. W. Hawkins
  *
  * PCI debug registers interface.
  *
@@ -32,6 +40,9 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
+int quit = 0;
+int verbosity = 3;
+
 /* PCI device */
 typedef struct {
 	/* Base address region */
@@ -62,9 +73,10 @@ typedef struct {
 } device_t;
 
 void display_help(device_t *dev);
-void parse_command(device_t *dev);
+void parse_command(device_t *dev, char* cmdFilePath);
 int process_command(device_t *dev, char *cmd);
 int change_mem(device_t *dev, char *cmd);
+void useCmdFile(device_t *dev, char* cmdFilePath);
 int fill_mem(device_t *dev, char *cmd);
 int display_mem(device_t *dev, char *cmd);
 int change_endian(device_t *dev, char *cmd);
@@ -134,13 +146,17 @@ static void show_usage()
 	printf("\nUsage: pci_debug -s <device>\n"\
 		 "  -h            Help (this message)\n"\
 		 "  -s <device>   Slot/device (as per lspci)\n" \
-		 "  -b <BAR>      Base address region (BAR) to access, eg. 0 for BAR0\n\n");
+	 	 "  -b <BAR>      Base address region (BAR) to access, eg. 0 for BAR0\n" \
+		 "  -q            Quit after send a command file\n" \
+		 "  -v <level>    Verbosity (0 to 3 - Default is 3)\n" \
+	 	 "  -f <file> 	  Use commands file to play before display prompt\n\n");
 }
 
 int main(int argc, char *argv[])
 {
-	int opt;
-	char *slot = 0;
+	int opt;		
+	char *slot = NULL;	
+	char *cmdFilePath = NULL;
 	int status;
 	struct stat statbuf;
 	device_t device;
@@ -149,7 +165,7 @@ int main(int argc, char *argv[])
 	/* Clear the structure fields */
 	memset(dev, 0, sizeof(device_t));
 
-	while ((opt = getopt(argc, argv, "b:hs:")) != -1) {
+	while ((opt = getopt(argc, argv, "b:hs:f:qv:")) != -1) {
 		switch (opt) {
 			case 'b':
 				/* Defaults to BAR0 if not provided */
@@ -158,8 +174,17 @@ int main(int argc, char *argv[])
 			case 'h':
 				show_usage();
 				return -1;
+			case 'q':
+				quit = 1;
+				break;
+			case 'v':
+				verbosity = atoi(optarg);
+				break;
 			case 's':
 				slot = optarg;
+				break;
+			case 'f':
+				cmdFilePath = optarg;
 				break;
 			default:
 				show_usage();
@@ -259,19 +284,23 @@ int main(int argc, char *argv[])
 	 * Tests
 	 * ------------------------------------------------------------
 	 */
+	if (verbosity >= 3)
+	{
+		printf("\n");
+		printf("PCI debug\n");
+		printf("---------\n\n");
+		printf(" - accessing BAR%d\n", dev->bar);
+		printf(" - region size is %d-bytes\n", dev->size);
+		printf(" - offset into region is %d-bytes\n", dev->offset);
 
-	printf("\n");
-	printf("PCI debug\n");
-	printf("---------\n\n");
-	printf(" - accessing BAR%d\n", dev->bar);
-	printf(" - region size is %d-bytes\n", dev->size);
-	printf(" - offset into region is %d-bytes\n", dev->offset);
+		/* Display help */
+		display_help(dev);
+	}
 
-	/* Display help */
-	display_help(dev);
+	verbosity==1?printf("\nAccessing BAR%d\n", dev->bar):0;
 
 	/* Process commands */
-	parse_command(dev);
+	parse_command(dev, cmdFilePath);
 
 	/* Cleanly shutdown */
 	munmap(dev->maddr, dev->size);
@@ -279,13 +308,69 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
+void useCmdFile(device_t *dev, char* cmdFilePath)
+{
+
+    FILE * fp;
+    char * line = NULL;
+    size_t len = 0;
+    int status;
+    int firstLine = 1; 
+    int bar = -1;
+    ssize_t read;
+
+	verbosity>=3?printf("Exectue a commands file\n"):0;
+    
+    fp = fopen(cmdFilePath, "r");
+    if (fp == NULL)
+    {
+		printf("Can not open the commands file\n");	
+		exit(EXIT_FAILURE);
+    }
+
+    while ((read = getline(&line, &len, fp)) != -1) {
+	len = strlen(line);
+	if(len > 1) 
+	{        
+		
+		if (firstLine == 1)
+		{
+			sscanf(line, "bar%d", &bar);
+			if(dev->bar != bar)
+			{
+				printf("Warning: BAR is no compliant with the command file (Expected: %d - Found: %d)\n", dev->bar, bar);
+				break;
+			}
+			firstLine = 0;
+		}else{
+			verbosity>=2?printf("Send: %s", line, len):0;
+			status = process_command(dev, line);
+			if (status < 0) {
+				printf("Warning: Command failure - %s", line);
+			}
+		}
+		
+	}
+    }
+
+    fclose(fp);
+    if (line)
+        free(line);
+}
+
+
+
 void
 parse_command(
-	device_t *dev)
+	device_t *dev, char* cmdFilePath)
 {
 	char *line;
 	int len;
 	int status;
+	if (cmdFilePath != NULL)
+		useCmdFile(dev, cmdFilePath);
+	
+	if(quit) return;
 
 	while(1) {
 		line = readline("PCI> ");
