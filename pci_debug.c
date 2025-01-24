@@ -1,6 +1,9 @@
 /* pci_debug.c
  *
- * Update version:6/21/2021 Léo Dumez leo.dumez@outlook.com
+ * Update version:2025/01/24 Release v1.0
+ * Add version option
+ *
+ * Update version:2021/06/21 Léo Dumez leo.dumez@outlook.com
  * Add commands file support.
  * Add verbosity level:
  * 	- 0: only error and warning
@@ -8,7 +11,7 @@
  *  - 2: 1 + the sent command
  *  - 3: Everything
  *
- * First version :6/21/2010 D. W. Hawkins
+ * First version :2010/06/21 D. W. Hawkins
  *
  * PCI debug registers interface.
  *
@@ -40,8 +43,11 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
+
 int quit = 0;
 int verbosity = 3;
+
+#define VERSION "v1.0"
 
 /* PCI device */
 typedef struct {
@@ -145,6 +151,7 @@ static void show_usage()
 {
 	printf("\nUsage: pci_debug -s <device>\n"\
 		 "  -h            Help (this message)\n"\
+         "  -V            display version\n"\
 		 "  -s <device>   Slot/device (as per lspci)\n" \
 	 	 "  -b <BAR>      Base address region (BAR) to access, eg. 0 for BAR0\n" \
 		 "  -q            Quit after send a command file\n" \
@@ -165,12 +172,15 @@ int main(int argc, char *argv[])
 	/* Clear the structure fields */
 	memset(dev, 0, sizeof(device_t));
 
-	while ((opt = getopt(argc, argv, "b:hs:f:qv:")) != -1) {
+	while ((opt = getopt(argc, argv, "b:hs:f:qv:V")) != -1) {
 		switch (opt) {
 			case 'b':
 				/* Defaults to BAR0 if not provided */
 				dev->bar = atoi(optarg);
 				break;
+            case 'V':
+                printf("pci_debug %s\n", VERSION);
+                return -1;
 			case 'h':
 				show_usage();
 				return -1;
@@ -343,7 +353,7 @@ void useCmdFile(device_t *dev, char* cmdFilePath)
 			}
 			firstLine = 0;
 		}else{
-			verbosity>=2?printf("Send: %s", line, len):0;
+			verbosity>=2?printf("Send: %s (%ld)", line, len):0;
 			status = process_command(dev, line);
 			if (status < 0) {
 				printf("Warning: Command failure - %s", line);
